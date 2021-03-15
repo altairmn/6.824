@@ -27,12 +27,13 @@ func (c *Coordinator) timeout(task *Task) {
 	time.Sleep(10 * time.Second)
 	c.mu.Lock()
 	if task.TaskType == "Map" && c.mapStatus[task.Filename] != DONE {
+		fmt.Printf("Task %v timedout, status: %v\n", task, c.mapStatus[task.Filename])
 		c.mapStatus[task.Filename] = PENDING
 	} else if task.TaskType == "Reduce" && c.reduceStatus[task.TaskId] != DONE {
+		fmt.Printf("Task %v timedout, status: %v\n", task, c.reduceStatus[task.TaskId])
 		c.reduceStatus[task.TaskId] = PENDING
 	}
 	c.mu.Unlock()
-	fmt.Printf("Task %v timedout\n", task)
 }
 
 func (c *Coordinator) doneMap() bool {
@@ -102,6 +103,7 @@ func (c *Coordinator) GetTask(req *TaskRequest, task *Task) error {
 	return nil
 }
 
+// LogTask logs task
 func (c *Coordinator) LogTask(task *Task, resp *LogResp) error {
 	c.mu.Lock()
 	if task.TaskType == "Map" {
@@ -110,6 +112,7 @@ func (c *Coordinator) LogTask(task *Task, resp *LogResp) error {
 		c.reduceStatus[task.TaskId] = DONE
 	}
 	c.mu.Unlock()
+	fmt.Printf("Logged task: %v\n", task)
 	return nil
 }
 

@@ -1,15 +1,17 @@
 package mr
 
-import "fmt"
-import "log"
-import "os"
-import "net/rpc"
-import "hash/fnv"
-import "sort"
-import "io/ioutil"
-import "encoding/json"
-import "time"
-import "path/filepath"
+import (
+	"encoding/json"
+	"fmt"
+	"hash/fnv"
+	"io/ioutil"
+	"log"
+	"net/rpc"
+	"os"
+	"path/filepath"
+	"sort"
+	"time"
+)
 
 //
 // Map functions return a slice of KeyValue.
@@ -26,6 +28,7 @@ type ByKey []KeyValue
 func (a ByKey) Len() int           { return len(a) }
 func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
+
 //
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
@@ -96,7 +99,7 @@ func ExecReduce(reducef func(string, []string) string, task Task) {
 			var kv KeyValue
 			if err := dec.Decode(&kv); err != nil {
 				break
-		}
+			}
 			intermediate = append(intermediate, kv)
 		}
 		file.Close()
@@ -130,12 +133,13 @@ func ExecReduce(reducef func(string, []string) string, task Task) {
 	}
 }
 
+// Worker method
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	// Your worker implementation here.
 	var task Task
 	for {
-		task = CallGetTask()
+		task = callGetTask()
 		// fmt.Printf("Received task %v\n", task)
 		if task.TaskId == NO_TASK {
 			time.Sleep(time.Second)
@@ -143,22 +147,24 @@ func Worker(mapf func(string, string) []KeyValue,
 			os.Exit(0)
 		} else if task.TaskType == "Map" {
 			ExecMap(mapf, task)
-			CallLogTask(&task)
+			callLogTask(&task)
 		} else if task.TaskType == "Reduce" {
 			ExecReduce(reducef, task)
-			CallLogTask(&task)
+			callLogTask(&task)
 		}
 	}
 }
 
-func CallGetTask() Task {
+// CallGetTask
+func callGetTask() Task {
 	req := TaskRequest{}
 	task := Task{}
-	call("Coordinator.GetTask", &req, &task);
+	call("Coordinator.GetTask", &req, &task)
 	return task
 }
 
-func CallLogTask(task *Task) {
+// CallLogTask
+func callLogTask(task *Task) {
 	resp := LogResp{}
 	call("Coordinator.LogTask", &task, &resp)
 }
