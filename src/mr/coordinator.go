@@ -1,29 +1,117 @@
 package mr
 
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
+import (
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
+	"sync"
+	"time"
+)
 
+const PENDING = 0
+const STARTED = 1
+const DONE = 2
 
 type Coordinator struct {
-	// Your definitions here.
-
+	files        []string
+	mapStatus    map[string]int
+	reduceStatus map[int]int
+	mu           sync.Mutex
+	numReduce    int
 }
 
-// Your code here -- RPC handlers for the worker to call.
+func (c *Coordinator) timeout(task *Task) {
+	time.Sleep(10 * time.Second)
+	c.mu.Lock()
+	if task.TaskType == "Map" && c.mapStatus[task.Filename] != DONE {
+		c.mapStatus[task.Filename] = PENDING
+	} else if task.TaskType == "Reduce" && c.reduceStatus[task.TaskId] != DONE {
+		c.reduceStatus[task.TaskId] = PENDING
+	}
+	c.mu.Unlock()
+	fmt.Printf("Task %v timedout\n", task)
+}
 
-//
-// an example RPC handler.
-//
-// the RPC argument and reply types are defined in rpc.go.
-//
-func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
-	reply.Y = args.X + 1
+func (c *Coordinator) doneMap() bool {
+	ret := true
+	c.mu.Lock()
+	for _, status := range c.mapStatus {
+		if status != DONE {
+			ret = false
+			break
+		}
+	}
+	c.mu.Unlock()
+	return ret
+}
+
+func (c *Coordinator) doneReduce() bool {
+	ret := true
+	c.mu.Lock()
+	for _, status := range c.reduceStatus {
+		if status != DONE {
+			ret = false
+			break
+		}
+	}
+	c.mu.Unlock()
+	return ret
+}
+
+func (c *Coordinator) GetTask(req *TaskRequest, task *Task) error {
+	// fmt.Println("Received request from Worker")
+	task.TaskId = NO_TASK
+	c.mu.Lock()
+	for idx, filename := range c.files {
+		if c.mapStatus[filename] == PENDING {
+			task.TaskType = "Map"
+			task.Filename = filename
+			task.NumReduce = c.numReduce
+			task.TaskId = idx
+			c.mapStatus[filename] = STARTED
+			go c.timeout(task)
+			fmt.Printf("Sent: %v\n", task)
+			break
+		}
+	}
+	c.mu.Unlock()
+
+	if c.doneMap() == true {
+		c.mu.Lock()
+		for rnum := 0; rnum <= c.numReduce; rnum++ {
+			if c.reduceStatus[rnum] == PENDING {
+				task.TaskType = "Reduce"
+				task.NumReduce = c.numReduce
+				task.TaskId = rnum
+				c.reduceStatus[rnum] = STARTED
+				go c.timeout(task)
+				// fmt.Printf("Sent: %v\n", task)
+				break
+			}
+		}
+		c.mu.Unlock()
+	}
+
+	if c.doneMap() == true && c.doneReduce() == true {
+		task.TaskId = FINISHED
+	}
+
 	return nil
 }
 
+func (c *Coordinator) LogTask(task *Task, resp *LogResp) error {
+	c.mu.Lock()
+	if task.TaskType == "Map" {
+		c.mapStatus[task.Filename] = DONE
+	} else if task.TaskType == "Reduce" {
+		c.reduceStatus[task.TaskId] = DONE
+	}
+	c.mu.Unlock()
+	return nil
+}
 
 //
 // start a thread that listens for RPCs from worker.go
@@ -46,11 +134,8 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 //
 func (c *Coordinator) Done() bool {
-	ret := false
-
 	// Your code here.
-
-
+	ret := c.doneMap() && c.doneReduce()
 	return ret
 }
 
@@ -61,9 +146,20 @@ func (c *Coordinator) Done() bool {
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
-
 	// Your code here.
 
+	c.files = files
+	c.mapStatus = make(map[string]int)
+	c.reduceStatus = make(map[int]int)
+	c.numReduce = nReduce
+
+	for _, fname := range files {
+		c.mapStatus[fname] = PENDING
+	}
+
+	for i := 0; i < nReduce; i++ {
+		c.reduceStatus[i] = PENDING
+	}
 
 	c.server()
 	return &c

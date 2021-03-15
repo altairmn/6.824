@@ -7,23 +7,37 @@ package mr
 //
 
 import "os"
+import "fmt"
 import "strconv"
-
-//
-// example to show how to declare the arguments
-// and reply for an RPC.
-//
-
-type ExampleArgs struct {
-	X int
-}
-
-type ExampleReply struct {
-	Y int
-}
 
 // Add your RPC definitions here.
 
+const NO_TASK = -1
+const FINISHED = -2
+
+type TaskRequest struct {
+	Id int
+}
+
+type Task struct {
+	TaskType string
+	TaskId int
+	Filename string
+	NumReduce int
+}
+
+func (task Task) String() string {
+	if (task.TaskType == "Map") {
+		return fmt.Sprintf("Map: id: %v, filename: %v", task.TaskId, task.Filename)
+	} else if (task.TaskType == "Reduce") {
+		return fmt.Sprintf("Reduce: %v; Total: %v", task.TaskId, task.NumReduce)
+	}
+	return ""
+}
+
+type LogResp struct {
+	Id int
+}
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
